@@ -1,0 +1,161 @@
+module MY_CUDA
+	use STORAGE
+	use cudafor
+	use Solvers
+	implicit none
+
+	integer(4), constant :: dev_num_param = 8
+	! rho vx vy vz p bx by bz
+
+    real(8), device :: dev_time_all                       ! Текущее время расчёта
+    INTEGER(4), device :: dev_N_cell                       ! Число ячеек в сетке
+    INTEGER(4), device :: dev_N_gran                       ! Число граней в сетке
+
+	real(8), device :: time_step
+	real(8), device :: time_step2
+
+
+	real(8), device, allocatable :: dev_Cell_par(:, :)     ! (8, :)
+
+	real(8), device, allocatable :: dev_Cell_center(:, :)      ! (3, :)
+	real(8), device, allocatable :: dev_Cell_Volume(:)         ! (:)
+
+	real(8), device, allocatable :: dev_Gran_normal(:,:)       ! (3, :) Нормаль грани   
+    real(8), device, allocatable :: dev_Gran_square(:)         ! (:) Площадь грани
+	real(8), device, allocatable :: dev_Gran_center(:,:)			! (3, :)
+
+	integer(4), device, allocatable :: dev_Cell_gran(:,:)            ! (6, :) Набор из 6 граней для каждой ячейки (если номер = 0, то грани нет в этом направлении)
+	real(8), device, allocatable :: dev_Cell_dist(:)                 ! Минимальное расстояние до грани в каждой ячейки 
+
+	integer(4), device, allocatable :: dev_Gran_neighbour(:,:) ! Соседи каждой грани (2,:) имеют по 2 соседа, нормаль ведёт от первого ко второму
+	integer(4), device, allocatable :: dev_Gran_neighbour_TVD(:,:) ! TVD-Соседи каждой грани (2,:) имеют по 2 соседа
+
+	integer(4), device, allocatable :: dev_Gran_type(:)                 ! Показывает тип грани
+
+	real(8), device, allocatable :: dev_Gran_POTOK(:, :)       ! (10, :) поток грани    последний - дивергенция магнитного поля для очистки
+
+
+    contains 
+
+	attributes(device) real(8) function dev_norm2(x)
+		! РАБОТАЕТ ТОЛЬКО ДЛЯ ТРЁХМЕРНЫХ ВЕКТОРОВ
+		implicit none
+		real(8), device :: x(*)
+
+		dev_norm2 = sqrt(x(1)**2 + x(2)**2 + x(3)**2)
+		return
+	end function dev_norm2
+
+    subroutine CUDA_info()
+	    ! Функция, печатающая информацию о видеокарте на экран (только о первой видеокарте)
+	    use OMP_lib
+         use cudafor
+        
+        implicit none
+        
+         type (cudaDeviceProp) :: prop
+        integer :: nDevices = 0, i, ierr
+        
+         ierr = cudaGetDeviceCount(nDevices)
+		
+		 print*, "  "
+		 print*, "  "
+		print*, "CUDA_info()"
+		print*, "  "
+        
+        write(*, "('Chislo videokard: ', i0)")  nDevices
+		
+		if (nDevices == 0) then
+			STOP "NET CUDA!!!"
+		end if
+		
+		 ierr = cudaGetDeviceProperties(prop, 0)
+		
+		 write(*, "('Version: ', i0,'.',i0)") prop%major, prop%minor
+		 write(*, "('Chislo mulitiprocessorov: ', i0)") prop%multiProcessorCount
+		 write(*, "('Max chislo potokov/multiprocessor: ', i0)") prop%maxThreadsPerMultiprocessor
+		 write(*, "('Global memory (GB): ', f9.3)") prop%totalGlobalMem / 1024.0**3
+		
+		 print*, "Konfiguration of working"
+		 write(*, "('max grid size: ', 2(i0, ' x '), i0 )") prop%maxGridSize
+		 write(*, "('max block size: ', 2(i0, ' x '), i0 )") prop%maxThreadsDim
+		 write(*, "('Max chislo potokov v blocke: ', i0)") prop%maxThreadsPerBlock
+		print*, "                "
+		print*, "                "
+	end subroutine CUDA_info
+
+	subroutine Set_CUDA()
+
+	end subroutine Set_CUDA
+
+	subroutine CUDA_START_MGD()
+		integer :: step, now, now2, step2
+		type(dim3) :: grid, tBlock
+		integer(4):: ierrSync, ierrAsync, nx, ny, ijk, istat, potok_in_block, all_step
+		real(8) :: local1
+		type(cudaEvent) :: startEvent, stopEvent
+		integer(4), device :: dev_now, dev_now2
+		real :: time_work
+
+		call Set_CUDA()
+
+		potok_in_block = 256
+		tBlock = dim3(32, 8, 1)
+		
+		now = 2
+		time_step2 = 0.00002_8              ! Шаг по времени (хранится на девайсе)
+		
+		istat = cudaEventCreate(startEvent)
+		istat = cudaEventCreate(stopEvent)
+		istat = cudaEventRecord(startEvent, 0)
+
+		all_step = 60000 * 3
+
+		do step = 1,  all_step  ! ---------------------------------------------------------------------------------------------------
+			ierrAsync = cudaDeviceSynchronize()
+			if (mod(step, 250) == 0) then
+				local1 = time_step2
+				print*, "Step = ", step , "  step_time = ", local1, " all step = ", all_step
+			end if
+
+
+			time_step = time_step2
+			
+			local1 = dev_time_all
+			local1 = local1 + time_step
+			dev_time_all = local1
+
+
+			now2 = now
+			now = mod(now, 2) + 1
+			ierrAsync = cudaDeviceSynchronize()
+			dev_now = now
+			dev_now2 = now2
+			ierrAsync = cudaDeviceSynchronize()
+
+
+			call CUF_MGD_grans <<< ceiling(real(dev_N_gran)/potok_in_block), potok_in_block>>> (dev_now)  ! цикл по граням
+			
+			ierrSync = cudaGetLastError(); ierrAsync = cudaDeviceSynchronize(); if (ierrSync /= cudaSuccess) &
+				write (*,*) 'Error Sinc start 16: ', cudaGetErrorString(ierrSync); if(ierrAsync /= cudaSuccess) & 
+				write(*,*) 'Error ASync start 16: ', cudaGetErrorString(cudaGetLastError())
+
+			
+
+			call CUF_MGD_cells <<< ceiling(real(dev_N_cell)/potok_in_block), potok_in_block>>> (dev_now)  ! цикл по ячейкам
+			
+			ierrSync = cudaGetLastError(); ierrAsync = cudaDeviceSynchronize(); if (ierrSync /= cudaSuccess) &
+				write (*,*) 'Error Sinc start 17: ', cudaGetErrorString(ierrSync); if(ierrAsync /= cudaSuccess) & 
+				write(*,*) 'Error ASync start 17: ', cudaGetErrorString(cudaGetLastError())
+	
+		end do
+		
+
+		istat = cudaEventRecord(stopEvent, 0)
+		istat = cudaEventSynchronize(stopEvent)
+		istat = cudaEventElapsedTime(time_work, startEvent, stopEvent)
+		print *, "CUDA Time work: ", (time_work)/(60*1000.0), "   in minutes"
+
+	end subroutine CUDA_START_MGD
+
+end module MY_CUDA

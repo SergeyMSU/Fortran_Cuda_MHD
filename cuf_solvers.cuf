@@ -1,0 +1,65 @@
+attributes(global) subroutine CUF_MGD_grans(now)
+    use MY_CUDA
+    implicit none
+	integer, intent(in) :: now
+    integer(4) :: now2, KOBL, idgod, n_disc, gr, metod, s1, s2, ss1, ss2, kdir
+    real(8) :: time, TT, dist, wc, dsl, dsp, dsc
+    real(8) :: POTOK(dev_num_param), distant(3)
+    real(8) :: qqq1(dev_num_param), qqq2(dev_num_param), qqq(dev_num_param)  ! Переменные в ячейке
+
+    now2 = mod(now, 2) + 1
+
+	KOBL = 0
+	kdir = 0
+	idgod = 0
+	n_disc = 0!! 1
+	time = 100000.0
+	gr = blockDim%x * (blockIdx%x - 1) + threadIdx%x   ! Номер потока
+
+    TT = time_step
+
+    if (gr > dev_N_gran) return
+
+    !if(dev_Gran_type(gr) == 2) return
+
+    metod = 3
+
+    POTOK = 0.0
+	s1 = dev_Gran_neighbour(1, gr)
+	s2 = dev_Gran_neighbour(2, gr)
+
+    distant = dev_Gran_center(:, gr) - dev_Cell_center(:, s1)
+	dist = dev_norm2(distant)
+    ss1 = dev_Gran_neighbour_TVD(1, gr)
+	ss2 = dev_Gran_neighbour_TVD(2, gr)
+
+    qqq1 = dev_Cell_par(:, s1)
+    qqq2 = dev_Cell_par(:, s2)
+
+    wc = 0.0
+    call chlld(metod, dev_Gran_normal(1, gr), dev_Gran_normal(2, gr), dev_Gran_normal(3, gr), &
+	 	wc, qqq1, qqq2, &
+         dsl, dsp, dsc,  &
+         POTOK, n_disc)
+
+
+    time = min(time, 0.9 * dist/(max(dabs(dsl), dabs(dsp))+ dabs(wc)) )   ! REDUCTION
+	dev_Gran_POTOK(1:dev_num_param, gr) = POTOK * dev_Gran_square(gr)
+	
+	dev_Gran_POTOK(dev_num_param + 1, gr) = 0.5 * DOT_PRODUCT(dev_Gran_normal(:, gr), qqq1(6:8) + qqq2(6:8)) * dev_Gran_square(gr)
+
+    if (.True.) then
+        time = atomicmin(time_step2, time)   ! Атомарная операция взятия минимального значения
+    end if
+
+end subroutine  CUF_MGD_grans
+
+
+attributes(global) subroutine CUF_MGD_cells(now)
+    use MY_CUDA
+    implicit none
+	integer, intent(in) :: now
+
+
+
+end subroutine CUF_MGD_cells
