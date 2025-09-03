@@ -1,0 +1,14 @@
+{
+    "[fortran]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.tokenColorCustomizations": {
+            "comments": "#6A9955",          // Цвет комментариев
+            "keywords": "#C586C0",          // Цвет ключевых слов
+            "strings": "#CE9178",           // Цвет строк
+            "numbers": "#B5CEA8",           // Цвет чисел
+            "functions": "#DCDCAA",         // Цвет функций
+            "variables": "#9CDCFE",         // Цвет переменных
+            "types": "#4EC9B0"              // Цвет типов данных
+        }
+    },
+}

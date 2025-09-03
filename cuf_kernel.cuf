@@ -238,7 +238,10 @@ module MY_CUDA
 		istat = cudaEventCreate(stopEvent)
 		istat = cudaEventRecord(startEvent, 0)
 
-		all_step = 3
+		point = (/0.0, 0.0, dev_Omega_local/);
+		R_x = rotationMatrixX(lambda)
+
+		all_step = 10
 
 		do step = 1,  all_step  ! ---------------------------------------------------------------------------------------------------
 			ierrAsync = cudaDeviceSynchronize()
@@ -255,16 +258,16 @@ module MY_CUDA
 			local1 = local1 + time_step
 			dev_time_all = local1
 
+			print*, "all time = ", local1
+
 			alpha = local1 * dev_Omega_local;
-			point = (/0.0, 0.0, dev_Omega_local/);
+			
 
 			R_z = rotationMatrixZ(alpha)
-			R_x = rotationMatrixX(lambda)
 			
 			! Последовательное умножение: R_x * (R_z * point)
 			temp_vec = matvec_mult(R_z, point)      
 			rotate_velosity_local = matvec_mult(R_x, temp_vec) 
-
 			rotate_velosity = rotate_velosity_local
 
 			print*, "rotate_velosity_local = ", rotate_velosity_local(1), rotate_velosity_local(2), rotate_velosity_local(3)
