@@ -9,6 +9,9 @@ program MIK
     use STORAGE
     use MY_CUDA
 
+    call Set_Storage()
+
     call CUDA_info()
+    call CUDA_START_MGD()
 
 end program MIK

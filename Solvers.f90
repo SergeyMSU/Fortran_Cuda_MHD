@@ -1817,9 +1817,9 @@ end module My_func
               print*,'hlld  HLLD solver, nstate=3, wrong choise!!!!',j_ccs
               print*,'w SL SZL SM SZR SR'
               print*,w,SL,SZL,SM,SZR,SR
-			  !print*, qqq1
-			  !print*, "___"
-			  !print*, qqq2
+			  print*, qqq1(1),  qqq1(2),  qqq1(3),  qqq1(4),  qqq1(5),  qqq1(6)
+			  print*, "___"
+			  print*, qqq2(1),  qqq2(2),  qqq2(3),  qqq2(4),  qqq2(5),  qqq2(6)
               !pause
 			  STOP
            endif
