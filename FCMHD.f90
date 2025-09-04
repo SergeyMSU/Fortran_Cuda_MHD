@@ -14,4 +14,6 @@ program MIK
     call CUDA_info()
     call CUDA_START_MGD()
 
+    call Save_Storage()
+
 end program MIK

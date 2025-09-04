@@ -204,6 +204,24 @@ module MY_CUDA
 		dev_Gran_POTOK = host_Gran_POTOK
 	end subroutine Set_CUDA
 
+	subroutine Send_data_to_Host()
+		host_Cell_par = dev_Cell_par
+		host_time_all = dev_time_all
+
+		deallocate(dev_Cell_par)
+		deallocate(dev_Cell_center)
+		deallocate(dev_Cell_Volume)
+		deallocate(dev_Cell_gran)
+
+		deallocate(dev_Gran_normal)
+		deallocate(dev_Gran_square)
+		deallocate(dev_Gran_center)
+		deallocate(dev_Gran_neighbour)
+		deallocate(dev_Gran_neighbour_TVD)
+		deallocate(dev_Gran_type)
+		deallocate(dev_Gran_POTOK)
+	end subroutine Send_data_to_Host
+
 	subroutine CUDA_START_MGD()
 		integer :: step, now, now2, step2
 		type(dim3) :: grid, tBlock
@@ -236,8 +254,8 @@ module MY_CUDA
 		temp_vec = simple_matvec_mult(R_x, point) 
 		print*, "temp_vec = ", temp_vec
 
-		all_step = 100
-		print_step = 10
+		all_step = 10000
+		print_step = 200
 
 		do step = 1,  all_step  ! ---------------------------------------------------------------------------------------------------
 			ierrAsync = cudaDeviceSynchronize()
@@ -268,7 +286,9 @@ module MY_CUDA
 			rotate_velosity_local = simple_matvec_mult(R_z, temp_vec) 
 			rotate_velosity = rotate_velosity_local
 
-			! print*, "rotate_velosity_local = ", rotate_velosity_local(1), rotate_velosity_local(2), rotate_velosity_local(3)
+			if (mod(step, print_step) == 0) then
+				print*, "rotate_velosity_local = ", rotate_velosity_local(1), rotate_velosity_local(2), rotate_velosity_local(3)
+			end if
 			
 			now2 = now
 			now = mod(now, 2) + 1
@@ -296,6 +316,8 @@ module MY_CUDA
 	
 		end do
 		
+
+		call Send_data_to_Host()
 
 		istat = cudaEventRecord(stopEvent, 0)
 		istat = cudaEventSynchronize(stopEvent)

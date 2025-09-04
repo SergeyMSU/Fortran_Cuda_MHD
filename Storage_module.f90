@@ -122,4 +122,26 @@ module STORAGE
     end subroutine Set_Storage
 
 
+    subroutine Save_Storage()
+        integer :: unit, ierr
+        real(8) :: cf
+
+        ! Открываем файл для записи в бинарном формате
+        open(newunit=unit, file="FCMHD_1_out.bin", form='unformatted', access='stream', &
+            action='write', status='replace', iostat=ierr)
+        
+        if (ierr /= 0) then
+            print *, "Error opening file for writing: ", filename
+            return
+        endif
+        
+        ! Записываем данные в ТОМ ЖЕ порядке, что и при чтении
+        write(unit) host_time_all
+        write(unit) host_Cell_par 
+
+        cf = 321.0_8
+        write(unit) cf
+    end subroutine Save_Storage
+
+
 end module STORAGE
