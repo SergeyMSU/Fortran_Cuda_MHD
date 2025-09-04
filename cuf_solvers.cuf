@@ -1,8 +1,8 @@
-attributes(global) subroutine CUF_MGD_grans(now)
+
+attributes(global) subroutine CUF_MGD_grans_test()
     use MY_CUDA
     implicit none
-	integer, intent(in) :: now
-    integer(4) :: now2, KOBL, idgod, n_disc, gr, metod, s1, s2, ss1, ss2, kdir, type, i
+    integer(4) :: idgod, n_disc, gr, metod, s1, s2, ss1, ss2, kdir, type, i
     real(8) :: time, dist, wc, dsl, dsp, dsc, aa, bb, cc, the
     real(8) :: POTOK(dev_num_param), distant(3), Gran_normal(3), square, rast(3)
     real(8) :: qqq1(dev_num_param), qqq2(dev_num_param), qqq11(dev_num_param), qqq22(dev_num_param)
@@ -12,11 +12,68 @@ attributes(global) subroutine CUF_MGD_grans(now)
     logical :: tvd 
 
     tvd = .TRUE.
-    now2 = mod(now, 2) + 1
 
-	KOBL = 0
 	kdir = 0
 	idgod = 0
+	n_disc = 0!! 1
+	time = 100000.0
+	gr = blockDim%x * (blockIdx%x - 1) + threadIdx%x   ! Номер потока
+
+    if (gr > dev_N_gran) return
+
+    type = dev_Gran_type(gr)
+
+    if(type == 2) return
+
+    POTOK = 0.0
+	! s1 = dev_Gran_neighbour(1, gr)
+	! s2 = dev_Gran_neighbour(2, gr)
+    ! cell_centr_s1 = dev_Cell_center(:, s1)
+    ! gran_centr = dev_Gran_center(:, gr)
+    ! qqq1 = dev_Cell_par(:, s1)
+
+    ! if(type == 3) then
+    !     qqq2 = qqq1
+    !     cell_centr_s2 = cell_centr_s1
+    !     tvd = .FALSE.
+    ! else
+    !     qqq2 = dev_Cell_par(:, s2)
+    !     cell_centr_s2 = dev_Cell_center(:, s2)
+    ! end if
+
+    ! ss1 = dev_Gran_neighbour_TVD(1, gr)
+	! ss2 = dev_Gran_neighbour_TVD(2, gr)
+
+    ! if(ss1 > 0 .and. ss2 > 0 .and. type == 1) then
+    !     qqq11 = dev_Cell_par(:, ss1)
+    !     qqq22 = dev_Cell_par(:, ss2)
+    ! else
+    !     qqq11 = qqq1
+    !     qqq22 = qqq2
+    ! end if
+
+
+    ! distant = gran_centr - cell_centr_s1
+	! dist = dev_norm2(distant)
+
+end subroutine CUF_MGD_grans_test
+
+
+attributes(global) subroutine CUF_MGD_grans(now)
+    use MY_CUDA
+    implicit none
+	integer, intent(in) :: now
+    integer(4) :: n_disc, gr, metod, s1, s2, ss1, ss2, type, i
+    real(8) :: time, dist, wc, dsl, dsp, dsc, aa, bb, cc, the
+    real(8) :: POTOK(dev_num_param), distant(3), Gran_normal(3), square, rast(3)
+    real(8) :: qqq1(dev_num_param), qqq2(dev_num_param), qqq11(dev_num_param), qqq22(dev_num_param)
+    real(8) :: qqq1_TVD(dev_num_param), qqq2_TVD(dev_num_param)
+    real(8) :: df1, df2, dff1, dff2, rad1, rad2, rad3, rad4, rad5, gran_centr(3), cell_centr_s1(3)
+    real(8) :: cell_centr_s2(3), cell_centr_ss1(3), cell_centr_ss2(3)
+    logical :: tvd 
+
+    tvd = .TRUE.
+
 	n_disc = 0!! 1
 	time = 100000.0
 	gr = blockDim%x * (blockIdx%x - 1) + threadIdx%x   ! Номер потока
@@ -366,16 +423,14 @@ attributes(global) subroutine CUF_MGD_cells(now)
 	integer, intent(in) :: now
 
     integer(4) :: gr
-	
-	integer(4) :: st, s1, s2, i, j, k, zone, now2, ijk
+	integer(4) :: st, i, j
 	real(8) :: qqq(dev_num_param)  ! Переменные в ячейке
 	real(8) :: dist, QQ3
 	real(8) :: POTOK(dev_num_param), vv(3), rr(3), F(3)
-	real(8) :: time, Volume, U8, rad1, rad2, aa, bb, cc, Volume2, sks
-	real(8) :: ro3, u3, v3, w3, p3, bx3, by3, bz3, Q3
-	logical :: l_1
+	real(8) :: time, Volume, sks
+	real(8) :: ro3, u3, v3, w3, p3, bx3, by3, bz3
 	
-	now2 = mod(now, 2) + 1
+    
 	gr = blockDim%x * (blockIdx%x - 1) + threadIdx%x   ! Номер потока
 	time = time_step
 

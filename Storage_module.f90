@@ -10,7 +10,8 @@ module STORAGE
     real(8), parameter :: par_R_character = 1.0_8
 
 
-    integer(4), constant :: host_num_param = 8     ! Число параметров в ячейке
+    integer(4), parameter  :: host_num_param = 8     ! Число параметров в ячейке
+
 
     real(8) :: host_time_all                       ! Текущее время расчёта
     INTEGER(4) :: host_N_cell                       ! Число ячеек в сетке

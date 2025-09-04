@@ -4,10 +4,10 @@ module MY_CUDA
 	use Solvers
 	implicit none
 
-	integer(4), device :: dev_num_param
-	real(8), constant :: dev_GM = 0.00439795_8
-	real(8), constant :: dev_Omega = 2.0 * par_pi_8/6.47143
-	real(8), constant :: dev_lambda = 0.52359878_8
+	integer(4), parameter :: dev_num_param = host_num_param
+	real(8), parameter :: dev_GM = 0.00439795_8
+	real(8), parameter :: dev_Omega = 2.0 * par_pi_8/6.47143
+	real(8), parameter :: dev_lambda = 0.52359878_8
 	! rho vx vy vz p bx by bz
 
     real(8), device :: dev_time_all                       ! Текущее время расчёта
@@ -79,18 +79,14 @@ module MY_CUDA
         Vz = Vr * cos(the_2) - Vtheta * sin(the_2);
 	end subroutine dekard_skorost
 
-	function matvec_mult(A, v) result(w)
+	function simple_matvec_mult(A, v) result(w)
 		real(8), intent(in) :: A(3,3), v(3)
 		real(8) :: w(3)
-		integer :: i, j
 		
-		do i = 1, 3
-			w(i) = 0.0d0
-			do j = 1, 3
-				w(i) = w(i) + A(i,j) * v(j)
-			end do
-		end do
-	end function matvec_mult
+		w(1) = A(1,1)*v(1) + A(1,2)*v(2) + A(1,3)*v(3)
+		w(2) = A(2,1)*v(1) + A(2,2)*v(2) + A(2,3)*v(3) 
+		w(3) = A(3,1)*v(1) + A(3,2)*v(2) + A(3,3)*v(3)
+	end function
 
 
 		! Матрица поворота вокруг оси Z
@@ -179,9 +175,6 @@ module MY_CUDA
 
 	subroutine Set_CUDA()
 		! Здесь просто выделяется память на девайсе и скачиваются все массивы из хоста на девайс
-
-		dev_num_param = host_num_param
-
 		dev_time_all = host_time_all
 		dev_N_cell = host_N_cell
 		dev_N_gran = host_N_gran
@@ -214,7 +207,7 @@ module MY_CUDA
 	subroutine CUDA_START_MGD()
 		integer :: step, now, now2, step2
 		type(dim3) :: grid, tBlock
-		integer(4):: ierrSync, ierrAsync, nx, ny, ijk, istat, potok_in_block, all_step
+		integer(4):: ierrSync, ierrAsync, nx, ny, ijk, istat, potok_in_block, all_step, print_step
 		real(8) :: local1, rotate_velosity_local(3), alpha
 		real(8) :: point(3), dev_Omega_local
 		type(cudaEvent) :: startEvent, stopEvent
@@ -240,37 +233,42 @@ module MY_CUDA
 
 		point = (/0.0, 0.0, dev_Omega_local/);
 		R_x = rotationMatrixX(lambda)
+		temp_vec = simple_matvec_mult(R_x, point) 
+		print*, "temp_vec = ", temp_vec
 
-		all_step = 10
+		all_step = 100
+		print_step = 10
 
 		do step = 1,  all_step  ! ---------------------------------------------------------------------------------------------------
 			ierrAsync = cudaDeviceSynchronize()
-			if (mod(step, 1) == 0) then
+			if (mod(step, print_step) == 0) then
 				local1 = time_step2
 				print*, "Step = ", step , "  step_time = ", local1, " all step = ", all_step
 			end if
 
 
 			time_step = time_step2
-			time_step2 = 100000000.0_8
+			time_step2 = 1000000000000000.0_8
 			
 			local1 = dev_time_all
 			local1 = local1 + time_step
 			dev_time_all = local1
 
-			print*, "all time = ", local1
+			if (mod(step, print_step) == 0) then
+				print*, "all time = ", local1
+			end if
+			
 
 			alpha = local1 * dev_Omega_local;
+			! print*, "alpha = ", alpha
 			
 
 			R_z = rotationMatrixZ(alpha)
-			
-			! Последовательное умножение: R_x * (R_z * point)
-			temp_vec = matvec_mult(R_z, point)      
-			rotate_velosity_local = matvec_mult(R_x, temp_vec) 
+			! Последовательное умножение: R_z * (R_x * point)  
+			rotate_velosity_local = simple_matvec_mult(R_z, temp_vec) 
 			rotate_velosity = rotate_velosity_local
 
-			print*, "rotate_velosity_local = ", rotate_velosity_local(1), rotate_velosity_local(2), rotate_velosity_local(3)
+			! print*, "rotate_velosity_local = ", rotate_velosity_local(1), rotate_velosity_local(2), rotate_velosity_local(3)
 			
 			now2 = now
 			now = mod(now, 2) + 1
@@ -280,8 +278,8 @@ module MY_CUDA
 			ierrAsync = cudaDeviceSynchronize()
 
 
-			!call CUF_MGD_grans <<< dim3(1,1,1), dim3(1,1,1)>>> (dev_now)  ! цикл по граням
 			call CUF_MGD_grans <<< ceiling(real(dev_N_gran)/potok_in_block), potok_in_block>>> (dev_now)  ! цикл по граням
+			! call CUF_MGD_grans_test <<< ceiling(real(dev_N_gran)/potok_in_block), potok_in_block>>> ()  ! цикл по граням
 			
 			ierrSync = cudaGetLastError(); 
 			ierrAsync = cudaDeviceSynchronize(); 
