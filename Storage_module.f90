@@ -43,7 +43,7 @@ module STORAGE
     subroutine Set_Storage()
         real(8) :: vv
         integer(4) :: i
-        open(1, file = "FCMHD_1.bin", FORM = 'BINARY', ACTION = "READ")
+        open(1, file = "FCMHD_2.bin", FORM = 'BINARY', ACTION = "READ")
 
         read(1) host_time_all
         read(1) host_N_cell
@@ -94,11 +94,6 @@ module STORAGE
                 print*, "rho < 0  =  ", host_Cell_par(1, i)
                 STOP
             end if
-
-            if(host_Cell_par(5, i) < 0.000000001) then
-                print*, "p < 0  =  ", host_Cell_par(5, i)
-                STOP
-            end if
         end do
 
         do i = 1, size(host_Gran_neighbour_TVD(1, :)) 
@@ -118,6 +113,7 @@ module STORAGE
             end if
         end do
 
+        call flush(6)
 
     end subroutine Set_Storage
 
@@ -127,11 +123,11 @@ module STORAGE
         real(8) :: cf
 
         ! Открываем файл для записи в бинарном формате
-        open(newunit=unit, file="FCMHD_1_out.bin", form='unformatted', access='stream', &
+        open(newunit=unit, file="FCMHD_1.11_out.bin", form='unformatted', access='stream', &
             action='write', status='replace', iostat=ierr)
         
         if (ierr /= 0) then
-            print *, "Error opening file for writing: ", filename
+            print *, "Error opening file for writing: ", "FCMHD_1.9_out.bin"
             return
         endif
         
@@ -141,7 +137,27 @@ module STORAGE
 
         cf = 321.0_8
         write(unit) cf
+
+        close(unit)
     end subroutine Save_Storage
+
+    subroutine Fill_data()
+        integer :: unit, ierr
+        real(8) :: cf
+
+        ! Открываем файл для записи в бинарном формате
+        open(3, file = "FCMHD_1.2_out.bin", FORM = 'BINARY', ACTION = "READ")
+        
+        ! Записываем данные в ТОМ ЖЕ порядке, что и при чтении
+        read(3) host_time_all
+        read(3) host_Cell_par 
+
+        read(3) cf
+        print*, "Proverka (321)  ", cf
+
+        close(3)
+        call flush(6)
+    end subroutine Fill_data
 
 
 end module STORAGE

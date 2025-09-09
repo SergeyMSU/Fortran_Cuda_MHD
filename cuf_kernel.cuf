@@ -17,6 +17,7 @@ module MY_CUDA
 	real(8), device :: time_step
 	real(8), device :: time_step2
 	real(8), device :: rotate_velosity(3)
+	real(8), device :: Drotate_velosity(3)
 
 
 	real(8), device, allocatable :: dev_Cell_par(:, :)     ! (8, :)
@@ -40,6 +41,61 @@ module MY_CUDA
 
 
     contains 
+
+	!@cuf attributes(host, device) & 
+	function shortest_vector_to_axis(P, axis_direction) result(vec)
+		implicit none
+		real(8), intent(in) :: P(3)           ! Исходная точка [x, y, z]
+		real(8), intent(in) :: axis_direction(3) ! Направляющий вектор оси [a, b, c]
+		real(8)             :: vec(3)         ! Искомый кратчайший вектор от оси к точке
+		
+		real(8) :: t
+		real(8) :: projection(3)
+		real(8) :: dir_norm(3), norm
+		
+		! 1. Нормируем направляющий вектор оси (чтобы его длина была равна 1)
+		norm = sqrt(axis_direction(1)**2 + axis_direction(2)**2 + axis_direction(3)**2)
+		dir_norm = axis_direction / norm
+		
+		! 2. Находим параметр t проекции точки P на ось
+		! t = (P · axis_direction) / (axis_direction · axis_direction)
+		! Но так как мы нормировали axis_direction, знаменатель = 1
+		t = dot_product(P, dir_norm)
+		
+		! 3. Находим координаты проекции точки P на ось
+		projection = t * dir_norm
+		
+		! 4. Кратчайший вектор от оси к точке - это разность между точкой и её проекцией
+		vec = P - projection
+		
+	end function shortest_vector_to_axis
+
+	!@cuf attributes(host, device) & 
+	real function rho_theta_value(theta)
+		implicit none
+		real(8), intent(in) :: theta ! угол от 0 до pi
+		
+		! Линейная интерполяция между точками (0, 0.5) и (pi/2, 1.0)
+		! и между (pi/2, 1.0) и (pi, 0.5)
+		if (theta < 1.5707963267948966) then
+			! Интерполяция от 0 до pi/2
+			rho_theta_value = 0.5 + (theta / 1.5707963267948966) * 0.5
+		else
+			! Интерполяция от pi/2 до pi
+			rho_theta_value = 1.0 - ((theta - 1.5707963267948966) / 1.5707963267948966) * 0.5
+		end if
+	end function rho_theta_value
+
+	!@cuf attributes(host, device) & 
+	real function v_theta_value(theta)
+		implicit none
+		real(8), intent(in) :: theta
+		real(8), parameter :: pi = 3.141592653589793
+		real(8), parameter :: half_pi = 1.5707963267948966
+		
+		v_theta_value = 1.0 + 0.4 * abs(theta - half_pi) / half_pi
+		
+	end function v_theta_value
 
 	!@cuf attributes(host, device) & 
     subroutine spherical_skorost(z, x, y, Vz, Vx, Vy, Vr, Vphi, Vtheta)
@@ -79,6 +135,7 @@ module MY_CUDA
         Vz = Vr * cos(the_2) - Vtheta * sin(the_2);
 	end subroutine dekard_skorost
 
+	!@cuf attributes(host, device) & 
 	function simple_matvec_mult(A, v) result(w)
 		real(8), intent(in) :: A(3,3), v(3)
 		real(8) :: w(3)
@@ -90,6 +147,7 @@ module MY_CUDA
 
 
 		! Матрица поворота вокруг оси Z
+	!@cuf attributes(host, device) & 
 	function rotationMatrixZ(angle_rad) result(R)
 		real(8), intent(in) :: angle_rad
 		real(8) :: R(3,3)
@@ -103,7 +161,22 @@ module MY_CUDA
 					0.0d0,      0.0d0,    1.0d0 ], [3, 3])
 	end function rotationMatrixZ
 
+	!@cuf attributes(host, device) & 
+	function DrotationMatrixZ(angle_rad) result(R)
+		real(8), intent(in) :: angle_rad
+		real(8) :: R(3,3)
+		real(8) :: cos_angle, sin_angle
+		
+		cos_angle = cos(angle_rad)
+		sin_angle = sin(angle_rad)
+		
+		R = reshape([ -dev_Omega * sin_angle,  dev_Omega * cos_angle, 0.0d0, &
+					 -dev_Omega * cos_angle,  -dev_Omega * sin_angle, 0.0d0, &
+					0.0d0,      0.0d0,    0.0d0 ], [3, 3])
+	end function DrotationMatrixZ
+
 	! Матрица поворота вокруг оси X
+	!@cuf attributes(host, device) & 
 	function rotationMatrixX(angle_rad) result(R)
 		real(8), intent(in) :: angle_rad
 		real(8) :: R(3,3)
@@ -117,7 +190,8 @@ module MY_CUDA
 					0.0d0,     -sin_angle, cos_angle ], [3, 3])
 	end function rotationMatrixX
 
-	attributes(device) real(8) function dev_norm2(x)
+	!@cuf attributes(host, device) & 
+	real(8) function dev_norm2(x)
 		! РАБОТАЕТ ТОЛЬКО ДЛЯ ТРЁХМЕРНЫХ ВЕКТОРОВ
 		implicit none
 		real(8), device :: x(*)
@@ -126,7 +200,8 @@ module MY_CUDA
 		return
 	end function dev_norm2
 
-	attributes(device) function cross_product(a, b) result(c)
+	!@cuf attributes(host, device) & 
+	function cross_product(a, b) result(c)
 		real(8), dimension(3), intent(in) :: a, b
 		real(8), dimension(3) :: c
 		
@@ -138,12 +213,34 @@ module MY_CUDA
     subroutine CUDA_info()
 	    ! Функция, печатающая информацию о видеокарте на экран (только о первой видеокарте)
 	    use OMP_lib
-         use cudafor
+        use cudafor
         
         implicit none
-        
+
          type (cudaDeviceProp) :: prop
         integer :: nDevices = 0, i, ierr
+		real(8) :: X(3), V(3), Omega(3), eX(3), eV(3), eOmega(3)
+		real(8) :: alpha, lambda
+
+		alpha = par_pi_8/2
+		lambda = 0.0_8
+		X = (/1.0_8, 0.0_8, 0.0_8 /)
+		Omega = (/0.0_8, 0.0_8, 0.9_8 /)
+		V = X * 3.0_8
+
+		eX = simple_matvec_mult(rotationMatrixZ(alpha), simple_matvec_mult(rotationMatrixX(lambda), X))
+		print*, "eX = ", eX
+		eOmega = simple_matvec_mult(rotationMatrixZ(alpha), simple_matvec_mult(rotationMatrixX(lambda), Omega))
+		eV = simple_matvec_mult(rotationMatrixZ(alpha), simple_matvec_mult(rotationMatrixX(lambda), V)) - &
+		cross_product(eOmega, shortest_vector_to_axis(eX, eOmega))
+		print*, "eOmega = ", eOmega
+		print*, "eV = ", eV
+		print*, "V = ", V
+		X(3) = 0.0;
+		V = simple_matvec_mult(rotationMatrixX(-lambda), simple_matvec_mult(rotationMatrixZ(-alpha), eV)) + &
+		cross_product(Omega, X)
+		print*, "V = ", V
+
         
          ierr = cudaGetDeviceCount(nDevices)
 		
@@ -208,18 +305,18 @@ module MY_CUDA
 		host_Cell_par = dev_Cell_par
 		host_time_all = dev_time_all
 
-		deallocate(dev_Cell_par)
-		deallocate(dev_Cell_center)
-		deallocate(dev_Cell_Volume)
-		deallocate(dev_Cell_gran)
+		! deallocate(dev_Cell_par)
+		! deallocate(dev_Cell_center)
+		! deallocate(dev_Cell_Volume)
+		! deallocate(dev_Cell_gran)
 
-		deallocate(dev_Gran_normal)
-		deallocate(dev_Gran_square)
-		deallocate(dev_Gran_center)
-		deallocate(dev_Gran_neighbour)
-		deallocate(dev_Gran_neighbour_TVD)
-		deallocate(dev_Gran_type)
-		deallocate(dev_Gran_POTOK)
+		! deallocate(dev_Gran_normal)
+		! deallocate(dev_Gran_square)
+		! deallocate(dev_Gran_center)
+		! deallocate(dev_Gran_neighbour)
+		! deallocate(dev_Gran_neighbour_TVD)
+		! deallocate(dev_Gran_type)
+		! deallocate(dev_Gran_POTOK)
 	end subroutine Send_data_to_Host
 
 	subroutine CUDA_START_MGD()
@@ -227,11 +324,12 @@ module MY_CUDA
 		type(dim3) :: grid, tBlock
 		integer(4):: ierrSync, ierrAsync, nx, ny, ijk, istat, potok_in_block, all_step, print_step
 		real(8) :: local1, rotate_velosity_local(3), alpha
+		real(8) :: Drotate_velosity_local(3)
 		real(8) :: point(3), dev_Omega_local
 		type(cudaEvent) :: startEvent, stopEvent
 		integer(4), device :: dev_now, dev_now2
 		real :: time_work
-		real(8) :: R_x(3,3), R_z(3,3), temp_vec(3)
+		real(8) :: R_x(3,3), R_z(3,3), temp_vec(3), DR_z(3,3)
 		real(8) :: lambda
 
 		lambda = dev_lambda
@@ -250,12 +348,17 @@ module MY_CUDA
 		istat = cudaEventRecord(startEvent, 0)
 
 		point = (/0.0, 0.0, dev_Omega_local/);
-		R_x = rotationMatrixX(lambda)
-		temp_vec = simple_matvec_mult(R_x, point) 
-		print*, "temp_vec = ", temp_vec
+		R_x = rotationMatrixX(-lambda)
+		R_z = rotationMatrixZ(1.0_8)
+		DR_z = DrotationMatrixZ(1.0_8)
+		! Последовательное умножение: R_z * (R_x * point)  
+		rotate_velosity_local = simple_matvec_mult(R_x, simple_matvec_mult(R_z, point)) 
+		Drotate_velosity_local = simple_matvec_mult(R_x, simple_matvec_mult(DR_z, point)) 
+		rotate_velosity = rotate_velosity_local
+		Drotate_velosity = Drotate_velosity_local
 
-		all_step = 10000
-		print_step = 200
+		all_step = 100000000
+		print_step = 100
 
 		do step = 1,  all_step  ! ---------------------------------------------------------------------------------------------------
 			ierrAsync = cudaDeviceSynchronize()
@@ -275,27 +378,31 @@ module MY_CUDA
 			if (mod(step, print_step) == 0) then
 				print*, "all time = ", local1
 			end if
+
+			if(local1 >= 14.0) EXIT
 			
 
-			alpha = local1 * dev_Omega_local;
-			! print*, "alpha = ", alpha
+			! alpha = local1 * dev_Omega_local;
+			! ! print*, "alpha = ", alpha
 			
 
-			R_z = rotationMatrixZ(alpha)
-			! Последовательное умножение: R_z * (R_x * point)  
-			rotate_velosity_local = simple_matvec_mult(R_z, temp_vec) 
-			rotate_velosity = rotate_velosity_local
+			! R_z = rotationMatrixZ(-alpha)
+			! DR_z = DrotationMatrixZ(-alpha)
+			! ! Последовательное умножение: R_z * (R_x * point)  
+			! rotate_velosity_local = simple_matvec_mult(R_x, simple_matvec_mult(R_z, point)) 
+			! Drotate_velosity_local = simple_matvec_mult(R_x, simple_matvec_mult(DR_z, point)) 
+			! rotate_velosity = rotate_velosity_local
+			! Drotate_velosity = Drotate_velosity_local
 
 			if (mod(step, print_step) == 0) then
 				print*, "rotate_velosity_local = ", rotate_velosity_local(1), rotate_velosity_local(2), rotate_velosity_local(3)
+				print*, "Drotate_velosity_local = ", Drotate_velosity_local(1), Drotate_velosity_local(2), Drotate_velosity_local(3)
+				call flush(6)
 			end if
-			
-			now2 = now
-			now = mod(now, 2) + 1
-			ierrAsync = cudaDeviceSynchronize()
+
+			now = 2!1
+			!if(local1 >= 20.0) now = 2
 			dev_now = now
-			dev_now2 = now2
-			ierrAsync = cudaDeviceSynchronize()
 
 
 			call CUF_MGD_grans <<< ceiling(real(dev_N_gran)/potok_in_block), potok_in_block>>> (dev_now)  ! цикл по граням
@@ -313,6 +420,13 @@ module MY_CUDA
 			ierrAsync = cudaDeviceSynchronize(); 
 			if (ierrSync /= cudaSuccess) write (*,*) 'Error Sinc start 18: ', cudaGetErrorString(ierrSync); 
 			if(ierrAsync /= cudaSuccess) write(*,*) 'Error ASync start 19: ', cudaGetErrorString(cudaGetLastError())
+
+
+			if (mod(step, 3000) == 0) then
+				call Send_data_to_Host()
+				call Save_Storage()
+				print*, "SAVE"
+			end if
 	
 		end do
 		
@@ -323,6 +437,19 @@ module MY_CUDA
 		istat = cudaEventSynchronize(stopEvent)
 		istat = cudaEventElapsedTime(time_work, startEvent, stopEvent)
 		print *, "CUDA Time work: ", (time_work)/(60*1000.0), "   in minutes"
+
+		deallocate(dev_Cell_par)
+		deallocate(dev_Cell_center)
+		deallocate(dev_Cell_Volume)
+		deallocate(dev_Cell_gran)
+
+		deallocate(dev_Gran_normal)
+		deallocate(dev_Gran_square)
+		deallocate(dev_Gran_center)
+		deallocate(dev_Gran_neighbour)
+		deallocate(dev_Gran_neighbour_TVD)
+		deallocate(dev_Gran_type)
+		deallocate(dev_Gran_POTOK)
 
 	end subroutine CUDA_START_MGD
 
