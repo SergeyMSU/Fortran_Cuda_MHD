@@ -123,11 +123,11 @@ module STORAGE
         real(8) :: cf
 
         ! Открываем файл для записи в бинарном формате
-        open(newunit=unit, file="FCMHD_1.11_out.bin", form='unformatted', access='stream', &
+        open(newunit=unit, file="FCMHD_3.0_out.bin", form='unformatted', access='stream', &
             action='write', status='replace', iostat=ierr)
         
         if (ierr /= 0) then
-            print *, "Error opening file for writing: ", "FCMHD_1.9_out.bin"
+            print *, "Error opening file for writing: ", "FCMHD_3.0_out.bin"
             return
         endif
         

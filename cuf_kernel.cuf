@@ -7,7 +7,7 @@ module MY_CUDA
 	integer(4), parameter :: dev_num_param = host_num_param
 	real(8), parameter :: dev_GM = 0.00439795_8
 	real(8), parameter :: dev_Omega = 2.0 * par_pi_8/6.47143
-	real(8), parameter :: dev_lambda = 0.52359878_8
+	real(8), parameter :: dev_lambda = 0.0_8 !0.52359878_8
 	! rho vx vy vz p bx by bz
 
     real(8), device :: dev_time_all                       ! Текущее время расчёта
@@ -74,15 +74,11 @@ module MY_CUDA
 	real function rho_theta_value(theta)
 		implicit none
 		real(8), intent(in) :: theta ! угол от 0 до pi
-		
-		! Линейная интерполяция между точками (0, 0.5) и (pi/2, 1.0)
-		! и между (pi/2, 1.0) и (pi, 0.5)
-		if (theta < 1.5707963267948966) then
-			! Интерполяция от 0 до pi/2
-			rho_theta_value = 0.5 + (theta / 1.5707963267948966) * 0.5
+
+		if( abs(theta - 1.5707963267948966) < par_pi_8/180.0 * 20.0) then
+			rho_theta_value = 1.0_8
 		else
-			! Интерполяция от pi/2 до pi
-			rho_theta_value = 1.0 - ((theta - 1.5707963267948966) / 1.5707963267948966) * 0.5
+			rho_theta_value = 0.6_8
 		end if
 	end function rho_theta_value
 
@@ -93,7 +89,11 @@ module MY_CUDA
 		real(8), parameter :: pi = 3.141592653589793
 		real(8), parameter :: half_pi = 1.5707963267948966
 		
-		v_theta_value = 1.0 + 0.4 * abs(theta - half_pi) / half_pi
+		if( abs(theta - 1.5707963267948966) < par_pi_8/180.0 * 20.0) then
+			v_theta_value = 1.0_8
+		else
+			v_theta_value = 1.6666666666_8
+		end if
 		
 	end function v_theta_value
 

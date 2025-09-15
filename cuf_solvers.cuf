@@ -123,9 +123,14 @@ attributes(global) subroutine CUF_MGD_grans(now)
     else if(type == 2) then
         ! Задаём граничные условия на солнце
         tvd = .FALSE.
-        the = acos(gran_centr(3) / rad5);
+
+        ! Вычисляем координаты в неподвижной системе
+        r_rotate = simple_matvec_mult(rotationMatrixX(-dev_lambda), simple_matvec_mult(rotationMatrixZ(-alpha), gran_centr))
+
+        the = acos(r_rotate(3) / rad5);
         qqq2(1) = rho_theta_value(the)  ! rho
         mv = v_theta_value(the)
+        qqq2(2:4) = mv * gran_centr/rad5
 
         if(the > par_pi_8/2.0) then
             mb = -1.33992_8
@@ -137,24 +142,14 @@ attributes(global) subroutine CUF_MGD_grans(now)
 
 
         b_phi = -mb * sin(the) * 0.173
-        call dekard_skorost(gran_centr(3), gran_centr(1), gran_centr(2), &
+        call dekard_skorost(r_rotate(3), r_rotate(1), r_rotate(2), &
                     mb, b_phi, 0.0_8, aa, bb, cc)
-        qqq2(8) = aa
-        qqq2(6) = bb
-        qqq2(7) = cc
+        vvv(3) = aa
+        vvv(1) = bb
+        vvv(2) = cc
+        qqq2(6:8) = simple_matvec_mult(rotationMatrixZ(alpha), simple_matvec_mult(rotationMatrixX(dev_lambda), vvv))
 
-        !qqq2(6:8) = mb * gran_centr/rad5
-        !qqq2(2:4) = mv * gran_centr/rad5
-
-        alpha = dev_time_all * dev_Omega
-        r_rotate = simple_matvec_mult(rotationMatrixZ(alpha), simple_matvec_mult(rotationMatrixX(dev_lambda), gran_centr))
-        drot = dev_norm2(r_rotate)
-        vvv = mv * r_rotate / drot
-        qqq2(2:4) = simple_matvec_mult(rotationMatrixX(-dev_lambda), simple_matvec_mult(rotationMatrixZ(-alpha), vvv)) - &
-        cross_product(rotate_velosity, shortest_vector_to_axis(gran_centr , rotate_velosity))
-
-
-        qqq2(5) = dev_norm2(qqq2(2:4))**2 * qqq2(1) / (ggg * 2.56 * 2.56);
+        qqq2(5) = 0.09155273!  dev_norm2(qqq2(2:4))**2 * qqq2(1) / (ggg * 2.56 * 2.56);
         qqq1 = qqq2
     else
         qqq2 = dev_Cell_par(:, s2)
@@ -449,7 +444,7 @@ attributes(global) subroutine CUF_MGD_grans(now)
 
 
     time = min(time, 0.9 * dist/(max(dabs(dsl), dabs(dsp))+ dabs(wc)) )   ! REDUCTION
-    time = min(time, 0.9 * dist/(dev_norm2(cross_product(gran_centr, rotate_velosity))))
+    !time = min(time, 0.9 * dist/(dev_norm2(cross_product(gran_centr, rotate_velosity))))
 	dev_Gran_POTOK(1:dev_num_param, gr) = POTOK * square
 	
 	dev_Gran_POTOK(dev_num_param + 1, gr) = 0.5 * DOT_PRODUCT(Gran_normal(:), qqq1(6:8) + qqq2(6:8)) * square
@@ -494,13 +489,13 @@ attributes(global) subroutine CUF_MGD_cells(now)
     qqq = dev_Cell_par(:, gr)
     
     vv = qqq(2:4)
-    F = 2.0 * qqq(1) * cross_product(vv, rotate_velosity_lokal) + &
-                qqq(1) * cross_product(rotate_velosity_lokal , cross_product(rr, rotate_velosity_lokal))  + &
-                qqq(1) * cross_product(rr, Drotate_velosity_lokal) &
-                - qqq(1) * rr * dev_GM / (dist**3)   
-    QQ3 = DOT_PRODUCT(F, vv);
-    ! F = 0.0_8
-    ! QQ3 = 0.0_8
+    !F = 2.0 * qqq(1) * cross_product(vv, rotate_velosity_lokal) + &
+     !           qqq(1) * cross_product(rotate_velosity_lokal , cross_product(rr, rotate_velosity_lokal))  + &
+    !            qqq(1) * cross_product(rr, Drotate_velosity_lokal) &
+    !            - qqq(1) * rr * dev_GM / (dist**3)   
+    !QQ3 = DOT_PRODUCT(F, vv);
+    F = 0.0_8
+    QQ3 = 0.0_8
 
 
     ! Просуммируем потоки через грани
