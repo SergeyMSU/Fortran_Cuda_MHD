@@ -122,8 +122,13 @@ module STORAGE
         integer :: unit, ierr
         real(8) :: cf
 
+        !3.0  0 градусов
+        !3.1  10 градусов
+        !3.2  30 градусов
+
+
         ! Открываем файл для записи в бинарном формате
-        open(newunit=unit, file="FCMHD_3.1_out.bin", form='unformatted', access='stream', &
+        open(newunit=unit, file="FCMHD_3.2_out.bin", form='unformatted', access='stream', &
             action='write', status='replace', iostat=ierr)
         
         if (ierr /= 0) then
