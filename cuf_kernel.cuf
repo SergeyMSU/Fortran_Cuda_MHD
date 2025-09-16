@@ -7,7 +7,7 @@ module MY_CUDA
 	integer(4), parameter :: dev_num_param = host_num_param
 	real(8), parameter :: dev_GM = 0.00439795_8
 	real(8), parameter :: dev_Omega = 2.0 * par_pi_8/6.47143
-	real(8), parameter :: dev_lambda = 0.0_8 !0.52359878_8
+	real(8), parameter :: dev_lambda = 10.0 * par_pi_8/180.0 !0.52359878_8
 	! rho vx vy vz p bx by bz
 
     real(8), device :: dev_time_all                       ! Текущее время расчёта
@@ -89,7 +89,7 @@ module MY_CUDA
 		real(8), parameter :: pi = 3.141592653589793
 		real(8), parameter :: half_pi = 1.5707963267948966
 		
-		if( abs(theta - 1.5707963267948966) < par_pi_8/180.0 * 20.0) then
+		if( abs(theta - half_pi) < pi/180.0 * 20.0) then
 			v_theta_value = 1.0_8
 		else
 			v_theta_value = 1.6666666666_8
